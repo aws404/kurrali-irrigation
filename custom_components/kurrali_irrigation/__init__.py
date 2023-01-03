@@ -33,6 +33,7 @@ from .entity import IUComponent
 from .service import register_component_services
 
 from .const import (
+    RAINBIRD,
     BINARY_SENSOR,
     CONF_RAINBIRD_IP,
     CONF_RAINBIRD_PASSWORD,
@@ -261,7 +262,6 @@ IRRIGATION_SCHEMA = vol.Schema(
 
 CONFIG_SCHEMA = vol.Schema({DOMAIN: IRRIGATION_SCHEMA}, extra=vol.ALLOW_EXTRA)
 
-
 async def async_setup(hass: HomeAssistant, config: Config):
     """Set up this integration using YAML."""
 
@@ -299,9 +299,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     client = AsyncRainbirdClient(async_get_clientsession(hass), rainbird_ip, rainbird_password)
     rainbird_controller = AsyncRainbirdController(client)
 
-    rainbird_client = async_get_clientsession(hass)
+    hass.data[DOMAIN] = {}
+    hass.data[DOMAIN][RAINBIRD] = rainbird_controller
 
+    # coordinator = IUCoordinator(hass).load(config[DOMAIN])
+    #hass.data[DOMAIN][COORDINATOR] = coordinator
 
-    hass.data[DOMAIN][entry.entry_id]['rainbird'] = rainbird_client
+    component = EntityComponent(_LOGGER, DOMAIN, hass)
+    hass.data[DOMAIN][COMPONENT] = component
+
+    #await component.async_add_entities([IUComponent(coordinator)])
+
+    #await hass.async_create_task(
+    #    async_load_platform(hass, BINARY_SENSOR, DOMAIN, {}, config)
+    #)
+
+    #register_component_services(component, coordinator)
+
+    #coordinator.listen()
+    #coordinator.clock.start()
    # entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
