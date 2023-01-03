@@ -24,7 +24,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 import pyrainbird.async_client
-import pyrainbird.encryption
+from pyrainbird.encryption import PayloadCoder
 
 from .irrigation_unlimited import IUCoordinator
 from .entity import IUComponent
@@ -90,7 +90,7 @@ from .const import (
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
-_LOGGER.error(pyrainbird.encryption.PayloadCoder)
+_LOGGER.error(PayloadCoder)
 
 def _list_is_not_empty(value):
     if value is None or len(value) < 1:
