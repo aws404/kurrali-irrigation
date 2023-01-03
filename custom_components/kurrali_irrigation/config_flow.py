@@ -1,15 +1,14 @@
 """Config flow"""
 from typing import Any
 from logging import Logger, getLogger
+import asyncio
 
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 import voluptuous as vol
-import asyncio
 
-import pyrainbird
 from pyrainbird import async_client
 
 from .const import (
@@ -19,8 +18,6 @@ from .const import (
 )
 
 _LOGGER: Logger = getLogger(__package__)
-
-_LOGGER.info(pyrainbird)
 
 class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configuration flow"""
