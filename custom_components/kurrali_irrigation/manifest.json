@@ -1,8 +1,8 @@
 {
-  "domain": "irrigation_unlimited",
-  "name": "Irrigation Unlimited",
-  "documentation": "https://github.com/rgc99/irrigation_unlimited",
-  "issue_tracker": "https://github.com/rgc99/irrigation_unlimited/issues",
+  "domain": "kurrali_irrigation",
+  "name": "Kurrali Irrigation",
+  "documentation": "https://github.com/aws404/kurrali_irrigation",
+  "issue_tracker": "https://github.com/aws404/kurrali_irrigation/issues",
   "version": "2022.12.0",
   "dependencies": [
     "recorder",
@@ -15,7 +15,7 @@
   ],
   "requirements": [
     "crontab",
-    "pyrainbird "
+    "pyrainbird"
   ],
   "loggers": [
     "pyrainbird"
