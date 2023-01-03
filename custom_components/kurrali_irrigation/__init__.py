@@ -24,6 +24,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 import pyrainbird.async_client
+import pyrainbird.encryption
 
 from .irrigation_unlimited import IUCoordinator
 from .entity import IUComponent
@@ -88,6 +89,8 @@ from .const import (
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
+
+_LOGGER.error(pyrainbird.encryption.PayloadCoder)
 
 def _list_is_not_empty(value):
     if value is None or len(value) < 1:
@@ -301,7 +304,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     rainbird_ip = entry.data.get(CONF_RAINBIRD_IP)
     rainbird_password = entry.data.get(CONF_RAINBIRD_PASSWORD)
 
-    rainbird_controller = await async_get_controller(hass, rainbird_ip, rainbird_password)
+    rainbird_controller = await async_setup_controller(hass, rainbird_ip, rainbird_password)
 
     hass.data[DOMAIN] = {}
     hass.data[DOMAIN][RAINBIRD] = rainbird_controller
