@@ -22,11 +22,7 @@ from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from pyrainbird.async_client import (
-    AsyncRainbirdClient,
-    AsyncRainbirdController,
-    RainbirdApiException,
-)
+from pyrainbird import async_client
 
 from .irrigation_unlimited import IUCoordinator
 from .entity import IUComponent
@@ -296,8 +292,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     rainbird_ip = entry.data.get(CONF_RAINBIRD_IP)
     rainbird_password = entry.data.get(CONF_RAINBIRD_PASSWORD)
 
-    client = AsyncRainbirdClient(async_get_clientsession(hass), rainbird_ip, rainbird_password)
-    rainbird_controller = AsyncRainbirdController(client)
+    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), rainbird_ip, rainbird_password)
+    rainbird_controller = async_client.AsyncRainbirdController(client)
 
     hass.data[DOMAIN] = {}
     hass.data[DOMAIN][RAINBIRD] = rainbird_controller

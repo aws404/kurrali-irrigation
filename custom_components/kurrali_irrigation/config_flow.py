@@ -4,11 +4,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from pyrainbird.async_client import (
-    AsyncRainbirdClient,
-    AsyncRainbirdController,
-    RainbirdApiException,
-)
+from pyrainbird import async_client
 from logging import Logger, getLogger
 
 from .const import (
@@ -36,13 +32,13 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            client = AsyncRainbirdClient(async_get_clientsession(self.hass), user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
-            self.controller = AsyncRainbirdController(client)
+            client = async_client.AsyncRainbirdClient(async_get_clientsession(self.hass), user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
+            self.controller = async_client.AsyncRainbirdController(client)
             try:
                 model_and_version = await self.controller.get_model_and_version()
                 _LOGGER.info("Setting up controller with info: " + model_and_version)
                 return
-            except RainbirdApiException as e:
+            except async_client.RainbirdApiException as e:
                 errors['base'] = str(e)
 
         return self.async_show_form(
