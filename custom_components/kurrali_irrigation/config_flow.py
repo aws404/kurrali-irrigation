@@ -1,11 +1,16 @@
 """Config flow"""
 from typing import Any
-import voluptuous as vol
+from logging import Logger, getLogger
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+import voluptuous as vol
+import asyncio
+
+import pyrainbird
 from pyrainbird import async_client
-from logging import Logger, getLogger
 
 from .const import (
     DOMAIN,
@@ -14,6 +19,8 @@ from .const import (
 )
 
 _LOGGER: Logger = getLogger(__package__)
+
+_LOGGER.info(pyrainbird)
 
 class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configuration flow"""
@@ -32,8 +39,11 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            client = async_client.AsyncRainbirdClient(async_get_clientsession(self.hass), user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
-            self.controller = async_client.AsyncRainbirdController(client)
+            gathered_controller = await asyncio.gather(
+                    _setup_controller(self.hass, user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
+            )
+            self.controller = gathered_controller[0]
+
             try:
                 model_and_version = await self.controller.get_model_and_version()
                 _LOGGER.info("Setting up controller with info: " + model_and_version)
@@ -85,6 +95,12 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
         return OptionsFlowHandler(config_entry)
+
+async def _setup_controller(hass, server, password):
+    """Set up a controller."""
+    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), server, password)
+    controller = async_client.AsyncRainbirdController(client)
+    return controller
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """The options handler"""
