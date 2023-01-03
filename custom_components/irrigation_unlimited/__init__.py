@@ -79,7 +79,6 @@ from .const import (
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
-
 def _list_is_not_empty(value):
     if value is None or len(value) < 1:
         raise vol.Invalid("Must have at least one entry")
