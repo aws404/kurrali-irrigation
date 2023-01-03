@@ -11,24 +11,32 @@ from pyrainbird.async_client import (
 )
 from logging import Logger, getLogger
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_RAINBIRD_IP,
+    CONF_RAINBIRD_PASSWORD
+)
 
 _LOGGER: Logger = getLogger(__package__)
 
 class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configuration flow"""
-    controller = None
+    VERSION = 2
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
+    def __init__(self):
+        """Initialize."""
+        self.controller = None
 
-    """Kurrali config flow."""
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
+        """Kurrali config flow."""
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
         errors = {}
 
         if user_input is not None:
-            client = AsyncRainbirdClient(async_get_clientsession(self.hass), user_input["rainbird_ip"], user_input["rainbird_password"])
+            client = AsyncRainbirdClient(async_get_clientsession(self.hass), user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
             self.controller = AsyncRainbirdController(client)
             try:
                 model_and_version = await self.controller.get_model_and_version()
@@ -39,7 +47,7 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required("rainbird_ip"): str, vol.Required("rainbird_password"): str}),
+            data_schema=vol.Schema({vol.Required(CONF_RAINBIRD_IP): str, vol.Required(CONF_RAINBIRD_PASSWORD): str}),
             errors=errors
         )
 
@@ -70,7 +78,7 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="setup_zones",
             description_placeholders={"model", model_and_version.model_name},
-            data_schema=vol.Schema({vol.Required("rainbird_ip"): str, vol.Required("rainbird_password"): str}),
+            data_schema=vol.Schema({vol.Required(CONF_RAINBIRD_IP): str, vol.Required(CONF_RAINBIRD_PASSWORD): str}),
             errors=errors
         )
 
@@ -88,6 +96,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
+        self.options = dict(config_entry.options)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -101,4 +110,21 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("schedule_to_modify"): vol.In(["create"])
             }),
+        )
+
+    async def async_step_user(self, user_input=None):
+        """Handle a flow initialized by the user."""
+        if user_input is not None:
+            self.options.update(user_input)
+            return self.async_create_entry(
+                title="Test", data=self.options
+            )
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("schedule_to_modify"): vol.In(["create"])
+                }
+            ),
         )

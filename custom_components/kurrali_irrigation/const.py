@@ -28,6 +28,10 @@ ICON_SEQUENCE_ZONE_OFF = "mdi:stop-circle-outline"
 BINARY_SENSOR = "binary_sensor"
 PLATFORMS = [BINARY_SENSOR]
 
+# Rainbird Configuration
+CONF_RAINBIRD_IP = "rainbird_ip"
+CONF_RAINBIRD_PASSWORD = "rainbird_password"
+
 # Configuration and options
 CONF_ENABLED = "enabled"
 CONF_CONTROLLER = "controller"

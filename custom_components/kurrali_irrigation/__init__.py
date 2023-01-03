@@ -19,6 +19,14 @@ from homeassistant.const import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from pyrainbird.async_client import (
+    AsyncRainbirdClient,
+    AsyncRainbirdController,
+    RainbirdApiException,
+)
 
 from .irrigation_unlimited import IUCoordinator
 from .entity import IUComponent
@@ -26,6 +34,8 @@ from .service import register_component_services
 
 from .const import (
     BINARY_SENSOR,
+    CONF_RAINBIRD_IP,
+    CONF_RAINBIRD_PASSWORD,
     CONF_ALLOW_MANUAL,
     CONF_CLOCK,
     CONF_ENABLED,
@@ -275,4 +285,23 @@ async def async_setup(hass: HomeAssistant, config: Config):
     coordinator.listen()
     coordinator.clock.start()
 
+    return True
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up this integration using UI."""
+    if hass.data.get(DOMAIN) is None:
+        hass.data.setdefault(DOMAIN, {})
+        _LOGGER.info(STARTUP_MESSAGE)
+
+    rainbird_ip = entry.data.get(CONF_RAINBIRD_IP)
+    rainbird_password = entry.data.get(CONF_RAINBIRD_PASSWORD)
+
+    client = AsyncRainbirdClient(async_get_clientsession(hass), rainbird_ip, rainbird_password)
+    rainbird_controller = AsyncRainbirdController(client)
+
+    rainbird_client = async_get_clientsession(hass)
+
+
+    hass.data[DOMAIN][entry.entry_id]['rainbird'] = rainbird_client
+   # entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
