@@ -1,7 +1,7 @@
 """Constants for irrigation_unlimited."""
 # Base component constants
-NAME = "Irrigation Unlimited"
-DOMAIN = "irrigation_unlimited"
+NAME = "Kurralu Irrigation"
+DOMAIN = "kurrali_irrigation"
 DOMAIN_DATA = f"{DOMAIN}_data"
 COORDINATOR = "coordinator"
 COMPONENT = "component"
