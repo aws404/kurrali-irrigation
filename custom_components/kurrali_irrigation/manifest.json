@@ -16,7 +16,7 @@
   ],
   "requirements": [
     "crontab",
-    "pyrainbird"
+    "pyrainbird==0.7.1"
   ],
   "loggers": [
     "pyrainbird"
