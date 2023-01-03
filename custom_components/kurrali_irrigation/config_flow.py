@@ -9,7 +9,7 @@ from pyrainbird.async_client import (
     AsyncRainbirdController,
     RainbirdApiException,
 )
-from logging import WARNING, Logger, getLogger, INFO, DEBUG, ERROR
+from logging import Logger, getLogger
 
 from .const import DOMAIN
 
@@ -22,8 +22,8 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     """Kurrali config flow."""
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        await self.async_set_unique_id("kurrali.irrigation")
-        self._abort_if_unique_id_configured()
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
 
         errors = {}
 

@@ -75,6 +75,8 @@ from .const import (
     CONF_ALL_ZONES_CONFIG,
     CONF_REFRESH_INTERVAL,
     CONF_CRON,
+    CONF_EVERY_N_DAYS,
+    CONF_START_N_DAYS,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
@@ -100,6 +102,13 @@ SUN_SCHEMA = vol.Schema(
     }
 )
 
+EVERY_N_DAYS_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_EVERY_N_DAYS): cv.positive_int,
+        vol.Required(CONF_START_N_DAYS): cv.date,
+    }
+)
+
 CRON_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_CRON): cv.string,
@@ -110,7 +119,7 @@ anchor_event = vol.Any(CONF_START, CONF_FINISH)
 month_event = vol.All(cv.ensure_list, [vol.In(MONTHS)])
 
 day_number = vol.All(vol.Coerce(int), vol.Range(min=0, max=31))
-day_event = vol.Any(CONF_ODD, CONF_EVEN, cv.ensure_list(day_number))
+day_event = vol.Any(CONF_ODD, CONF_EVEN, cv.ensure_list(day_number), EVERY_N_DAYS_SCHEMA)
 
 SCHEDULE_SCHEMA = vol.Schema(
     {
