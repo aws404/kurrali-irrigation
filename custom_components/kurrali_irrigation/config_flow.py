@@ -7,7 +7,7 @@ from homeassistant.core import callback
 
 import voluptuous as vol
 
-from . import async_get_controller
+from . import async_setup_controller
 
 from .const import (
     DOMAIN,
@@ -34,7 +34,7 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            self.controller = await async_get_controller(self.hass, user_input[CONF_RAINBIRD_IP], user_input[CONF_RAINBIRD_PASSWORD])
+            self.controller = await async_setup_controller(self.hass, user_input[CONF_RAINBIRD_IP], user_input[CONF_RAINBIRD_PASSWORD])
 
             try:
                 model_and_version = await self.controller.get_model_and_version()
