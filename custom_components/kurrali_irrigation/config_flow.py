@@ -1,15 +1,13 @@
 """Config flow"""
 from typing import Any
 from logging import Logger, getLogger
-import asyncio
 
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 import voluptuous as vol
 
-from pyrainbird import async_client
+from . import async_get_controller
 
 from .const import (
     DOMAIN,
@@ -36,16 +34,13 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            gathered_controller = await asyncio.gather(
-                    _setup_controller(self.hass, user_input.get(CONF_RAINBIRD_IP), user_input.get(CONF_RAINBIRD_PASSWORD))
-            )
-            self.controller = gathered_controller[0]
+            self.controller = await async_get_controller(self.hass, user_input[CONF_RAINBIRD_IP], user_input[CONF_RAINBIRD_PASSWORD])
 
             try:
                 model_and_version = await self.controller.get_model_and_version()
                 _LOGGER.info("Setting up controller with info: " + model_and_version)
                 return
-            except async_client.RainbirdApiException as e:
+            except Exception as e:
                 errors['base'] = str(e)
 
         return self.async_show_form(
@@ -93,11 +88,6 @@ class KurraliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return OptionsFlowHandler(config_entry)
 
-async def _setup_controller(hass, server, password):
-    """Set up a controller."""
-    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), server, password)
-    controller = async_client.AsyncRainbirdController(client)
-    return controller
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """The options handler"""

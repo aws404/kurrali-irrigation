@@ -5,6 +5,7 @@ For more details about this integration, please refer to
 https://github.com/rgc99/irrigation_unlimited
 """
 import logging
+import asyncio
 import voluptuous as vol
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.core import Config, HomeAssistant
@@ -283,6 +284,18 @@ async def async_setup(hass: HomeAssistant, config: Config):
 
     return True
 
+async def async_get_controller(hass, server, password) -> async_client.AsyncRainbirdClient:
+    """Get a client using the given details"""
+    return await asyncio.gather(
+        _setup_controller(hass, server, password)
+    )[0]
+
+async def _setup_controller(hass, server, password):
+    """Set up a controller."""
+    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), server, password)
+    controller = async_client.AsyncRainbirdController(client)
+    return controller
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up this integration using UI."""
     if hass.data.get(DOMAIN) is None:
@@ -292,8 +305,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     rainbird_ip = entry.data.get(CONF_RAINBIRD_IP)
     rainbird_password = entry.data.get(CONF_RAINBIRD_PASSWORD)
 
-    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), rainbird_ip, rainbird_password)
-    rainbird_controller = async_client.AsyncRainbirdController(client)
+    rainbird_controller = await async_get_controller(hass, rainbird_ip, rainbird_password)
 
     hass.data[DOMAIN] = {}
     hass.data[DOMAIN][RAINBIRD] = rainbird_controller
