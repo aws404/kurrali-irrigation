@@ -23,7 +23,7 @@ from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from pyrainbird import async_client
+import pyrainbird.async_client
 
 from .irrigation_unlimited import IUCoordinator
 from .entity import IUComponent
@@ -284,7 +284,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
 
     return True
 
-async def async_get_controller(hass, server, password) -> async_client.AsyncRainbirdClient:
+async def async_get_controller(hass, server, password) -> pyrainbird.async_client.AsyncRainbirdController:
     """Get a client using the given details"""
     return await asyncio.gather(
         _setup_controller(hass, server, password)
@@ -292,8 +292,10 @@ async def async_get_controller(hass, server, password) -> async_client.AsyncRain
 
 async def _setup_controller(hass, server, password):
     """Set up a controller."""
-    client = async_client.AsyncRainbirdClient(async_get_clientsession(hass), server, password)
-    controller = async_client.AsyncRainbirdController(client)
+    client = pyrainbird.async_client.AsyncRainbirdClient(
+        async_get_clientsession(hass), server, password
+    )
+    controller = pyrainbird.async_client.AsyncRainbirdController(client)
     return controller
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
