@@ -64,11 +64,7 @@ from .const import (
     CONF_PREAMBLE,
     CONF_POSTAMBLE,
     CONF_GRANULARITY,
-    CONF_TESTING,
-    CONF_SPEED,
-    CONF_TIMES,
     CONF_START,
-    CONF_END,
     MONTHS,
     CONF_SHOW,
     CONF_CONFIG,
@@ -78,7 +74,6 @@ from .const import (
     CONF_SEQUENCES,
     CONF_ALL_ZONES_CONFIG,
     CONF_REFRESH_INTERVAL,
-    CONF_OUTPUT_EVENTS,
     CONF_CRON,
 )
 
@@ -133,7 +128,6 @@ SCHEDULE_SCHEMA = vol.Schema(
 
 ZONE_SCHEMA = vol.Schema(
     {
-        vol.Optional(CONF_SCHEDULES): vol.All(cv.ensure_list, [SCHEDULE_SCHEMA]),
         vol.Optional(CONF_ZONE_ID): cv.matches_regex(r"^[a-z0-9]+(_[a-z0-9]+)*$"),
         vol.Optional(CONF_NAME): cv.string,
         vol.Optional(CONF_ENTITY_ID): cv.entity_ids,
@@ -231,35 +225,6 @@ CLOCK_SCHEMA = vol.Schema(
     }
 )
 
-TEST_RESULT_SCHEMA = vol.Schema(
-    {
-        vol.Required("t"): cv.datetime,
-        vol.Required("c"): cv.positive_int,
-        vol.Required("z"): cv.positive_int,
-        vol.Required("s"): cv.boolean,
-    }
-)
-
-TEST_TIME_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_START): cv.datetime,
-        vol.Required(CONF_END): cv.datetime,
-        vol.Optional(CONF_NAME): cv.string,
-        vol.Optional(CONF_RESULTS): [TEST_RESULT_SCHEMA],
-    }
-)
-
-TEST_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_ENABLED): cv.boolean,
-        vol.Optional(CONF_SPEED): cv.positive_float,
-        vol.Optional(CONF_TIMES): [TEST_TIME_SCHEMA],
-        vol.Optional(CONF_OUTPUT_EVENTS): cv.boolean,
-        vol.Optional(CONF_SHOW_LOG): cv.boolean,
-        vol.Optional(CONF_AUTOPLAY): cv.boolean,
-    }
-)
-
 IRRIGATION_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_CONTROLLERS, default={}): vol.All(
@@ -271,7 +236,6 @@ IRRIGATION_SCHEMA = vol.Schema(
         vol.Optional(CONF_HISTORY_REFRESH): cv.positive_int,
         vol.Optional(CONF_SYNC_SWITCHES): cv.boolean,
         vol.Optional(CONF_RENAME_ENTITIES): cv.boolean,
-        vol.Optional(CONF_TESTING): TEST_SCHEMA,
         vol.Optional(CONF_HISTORY): HISTORY_SCHEMA,
         vol.Optional(CONF_CLOCK): CLOCK_SCHEMA,
     }

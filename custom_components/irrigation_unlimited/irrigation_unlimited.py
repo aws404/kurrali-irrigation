@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Dict, OrderedDict, List, Set, NamedTuple, Callable, Awaitable
 from logging import WARNING, Logger, getLogger, INFO, DEBUG, ERROR
 import uuid
-import time as tm
 import json
 from crontab import CronTab
 from homeassistant.core import HomeAssistant, HassJob, CALLBACK_TYPE, DOMAIN as HADOMAIN
@@ -15,9 +14,11 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_call_later,
+    async_track_template_result,
+    TrackTemplate,
     Event as HAEvent,
 )
-from homeassistant.helpers import sun
+from homeassistant.helpers import sun, template
 from homeassistant.util import dt
 
 from homeassistant.const import (
@@ -68,7 +69,6 @@ from .const import (
     CONF_ALLOW_MANUAL,
     CONF_CLOCK,
     CONF_CONTROLLER,
-    CONF_MODE,
     CONF_RENAME_ENTITIES,
     CONF_ENTITY_BASE,
     CONF_RUN,
@@ -80,24 +80,20 @@ from .const import (
     CONF_INCREASE,
     CONF_INDEX,
     CONF_LOGGING,
-    CONF_OUTPUT_EVENTS,
     CONF_PERCENTAGE,
     CONF_REFRESH_INTERVAL,
     CONF_RESET,
-    CONF_RESULTS,
     CONF_SCHEDULE,
     CONF_SEQUENCE,
     CONF_SEQUENCE_ZONES,
     CONF_SEQUENCES,
     CONF_SEQUENCE_ID,
     CONF_SHOW_LOG,
-    CONF_AUTOPLAY,
     CONF_ANCHOR,
     CONF_VERSION,
     COORDINATOR,
     DEFAULT_GRANULARITY,
     DEFAULT_REFRESH_INTERVAL,
-    DEFAULT_TEST_SPEED,
     CONF_DURATION,
     CONF_ENABLED,
     CONF_GRANULARITY,
@@ -105,11 +101,6 @@ from .const import (
     CONF_SUN,
     CONF_PREAMBLE,
     CONF_POSTAMBLE,
-    CONF_TESTING,
-    CONF_SPEED,
-    CONF_TIMES,
-    CONF_START,
-    CONF_END,
     CONF_CONTROLLERS,
     CONF_SCHEDULES,
     CONF_ZONES,
@@ -159,7 +150,6 @@ from .const import (
     STATUS_DISABLED,
     STATUS_INITIALISING,
     TIMELINE_STATUS,
-    CONF_FIXED,
     CONF_MAX_LOG_ENTRIES,
     DEFAULT_MAX_LOG_ENTRIES,
     CONF_CRON,
@@ -637,6 +627,19 @@ class IUSchedule(IUBase):
                     )
                     self._enabled = False  # Shutdown this schedule
                     return None
+            elif isinstance(self._time, template.Template):
+                def on_update(event, updates):
+                    _LOGGER.info("reload required")
+                    self._coordinator.get(0)._run_queue.clear(stime)
+                    async_call_later(self._hass, 0, self._coordinator._async_replay_last_timer)
+
+                async_track_template_result(
+                    self._hass, [TrackTemplate(self._time, ())], on_update
+                )
+
+                next_run = datetime.combine(
+                    next_run.date(), dt.parse_time(self._time.async_render()), next_run.tzinfo
+                )
             else:  # Some weird error happened
                 return None
 
@@ -1277,7 +1280,6 @@ class IUZone(IUBase):
         # Private variables
         self._initialised: bool = False
         self._finalised: bool = False
-        self._schedules: list[IUSchedule] = []
         self._run_queue = IUScheduleQueue()
         self._adjustment = IUAdjustment()
         self._zone_sensor: Entity = None
@@ -1302,11 +1304,6 @@ class IUZone(IUBase):
     def entity_id(self) -> str:
         """Return the HA entity_id for the zone"""
         return f"{BINARY_SENSOR}.{DOMAIN}_{self.entity_base}"
-
-    @property
-    def schedules(self) -> "list[IUSchedule]":
-        """Return a list of schedules associated with this zone"""
-        return self._schedules
 
     @property
     def runs(self) -> IUScheduleQueue:
@@ -1400,12 +1397,7 @@ class IUZone(IUBase):
 
     def _is_setup(self) -> bool:
         """Check if this object is setup"""
-        self._initialised = self._zone_sensor is not None
-
-        if self._initialised:
-            for schedule in self._schedules:
-                self._initialised = self._initialised and schedule.is_setup
-        return self._initialised
+        return self._zone_sensor is not None
 
     def _status(self) -> str:
         """Return status of zone"""
@@ -1460,20 +1452,8 @@ class IUZone(IUBase):
         # pylint: disable=unused-argument
         self._run_queue.cancel(stime)
 
-    def add(self, schedule: IUSchedule) -> IUSchedule:
-        """Add a new schedule to the zone"""
-        self._schedules.append(schedule)
-        return schedule
-
-    def find_add(self, index: int) -> IUSchedule:
-        """Look for and add if necessary a new schedule"""
-        if index >= len(self._schedules):
-            return self.add(IUSchedule(self._hass, self._coordinator, index))
-        return self._schedules[index]
-
     def clear(self) -> None:
         """Reset this zone"""
-        self._schedules.clear()
         self.clear_run_queue()
         self._adjustment = IUAdjustment()
         self._is_on = False
@@ -1509,9 +1489,6 @@ class IUZone(IUBase):
             self._show_timeline = config[CONF_SHOW].get(
                 CONF_TIMELINE, self._show_timeline
             )
-        if CONF_SCHEDULES in config:
-            for sidx, schedule_config in enumerate(config[CONF_SCHEDULES]):
-                self.find_add(sidx).load(schedule_config)
         self._dirty = True
         return self
 
@@ -1540,9 +1517,6 @@ class IUZone(IUBase):
         result[ATTR_STATUS] = self.status
         result[ATTR_ADJUSTMENT] = str(self._adjustment)
         result[ATTR_CURRENT_DURATION] = current_duration
-        result[CONF_SCHEDULES] = []
-        for schedule in self._schedules:
-            result[CONF_SCHEDULES].append(schedule.as_dict())
         return result
 
     def timeline(self) -> list:
@@ -1575,21 +1549,6 @@ class IUZone(IUBase):
             status |= IURunQueue.RQ_STATUS_CLEARED
 
         self._dirty = False
-        return status
-
-    def muster_schedules(self, stime: datetime) -> int:
-        """Calculate run times for this zone"""
-        status: int = 0
-
-        for schedule in self._schedules:
-            if not schedule.enabled:
-                continue
-            if self._run_queue.merge_fill(stime, self, schedule, self._adjustment):
-                status |= IURunQueue.RQ_STATUS_EXTENDED
-
-        if status != 0:
-            self.request_update()
-
         return status
 
     def check_run(self, stime: datetime, parent_enabled: bool) -> bool:
@@ -2998,11 +2957,6 @@ class IUController(IUBase):
                             break
                         zone_status |= IURunQueue.RQ_STATUS_EXTENDED
 
-        # Process zone schedules
-        for zone in self._zones:
-            if zone.enabled:
-                zone_status |= zone.muster_schedules(stime)
-
         # Post processing
         for zone in self._zones:
             zone_status |= zone.runs.update_queue(stime)
@@ -3368,421 +3322,6 @@ class IUEvent:
         }
 
 
-class IUTest(IUBase):
-    """This class represents a single test. Contains a list of
-    expected results."""
-
-    # pylint: disable=too-many-instance-attributes
-    def __init__(self, test_index: int, speed: float) -> None:
-        # Passed parameters
-        super().__init__(test_index)
-        self._speed = speed
-        # Config parameters
-        self._name: str = None
-        self._start: datetime = None
-        self._end: datetime = None
-        self._results: list[IUEvent] = []
-        # Private variables
-        self._current_result: int = 0
-        self._events: int = 0
-        self._checks: int = 0
-        self._errors: int = 0
-        self._perf_mon: int = 0
-        self._delta: timedelta = None
-        self._test_time: float = 0
-
-    @property
-    def name(self) -> str:
-        """Return the friendly name for this test"""
-        return self._name
-
-    @property
-    def start(self) -> datetime:
-        """Return the start time for this test"""
-        return self._start
-
-    @property
-    def end(self) -> datetime:
-        """Return the end time for this test"""
-        return self._end
-
-    @property
-    def events(self) -> int:
-        """Return the number of events received"""
-        return self._events
-
-    @property
-    def checks(self) -> int:
-        """Return the number of checks performed"""
-        return self._checks
-
-    @property
-    def errors(self) -> int:
-        """Return the number of errors identified"""
-        return self._errors
-
-    @property
-    def test_time(self) -> float:
-        """Return the test run time"""
-        return self._test_time
-
-    @property
-    def virtual_duration(self) -> timedelta:
-        """Return the real duration"""
-        return (self._end - self._start) / self._speed
-
-    @property
-    def current_result(self) -> int:
-        """Return the index of the next result to check"""
-        return self._current_result
-
-    @property
-    def total_results(self) -> int:
-        """Return the number of expected results from the test"""
-        return len(self._results)
-
-    def is_finished(self, atime) -> bool:
-        """Indicate if this test has finished"""
-        return self.virtual_time(atime) >= self._end
-
-    def next_result(self) -> IUEvent:
-        """Return the next result"""
-        if self._current_result < len(self._results):
-            result = self._results[self._current_result]
-            self._current_result += 1
-            return result
-        return None
-
-    def check_result(self, result: IUEvent, event: IUEvent) -> bool:
-        """Compare the expected result and the event"""
-        self._events += 1
-        if result is not None:
-            self._checks += 1
-            if result != event:
-                self._errors += 1
-                return False
-        else:
-            return False
-        return True
-
-    def clear(self) -> None:
-        """Remove all the results"""
-        self._results.clear()
-
-    def load(self, config: OrderedDict):
-        """Load the configuration"""
-        self.clear()
-        self._start = wash_dt(dt.as_utc(config[CONF_START]))
-        self._end = wash_dt(dt.as_utc(config[CONF_END]))
-        self._name = config.get(CONF_NAME, None)
-        if CONF_RESULTS in config:
-            for result in config[CONF_RESULTS]:
-                self._results.append(IUEvent().load(result))
-        return self
-
-    def begin_test(self, atime: datetime) -> None:
-        """Start test"""
-        self._delta = atime - self._start
-        self._perf_mon = tm.perf_counter()
-        self._current_result = 0
-        self._events = 0
-        self._checks = 0
-        self._errors = 0
-        self._test_time = 0
-
-    def end_test(self) -> None:
-        """Finalise test"""
-        self._test_time = tm.perf_counter() - self._perf_mon
-
-    def virtual_time(self, atime: datetime) -> datetime:
-        """Return the virtual clock. For testing we can speed
-        up time. This routine will return a virtual time based
-        on the real time and the duration from start. It is in
-        effect a test warp speed"""
-        virtual_start: datetime = atime - self._delta
-        actual_duration: float = (virtual_start - self._start).total_seconds()
-        virtual_duration: float = actual_duration * self._speed
-        vtime = self._start + timedelta(seconds=virtual_duration)
-        # The conversion may not be exact due to the internal precision
-        # of the compiler particularly at high speed values. Compensate
-        # by rounding if the value is very close to an internal boundary
-        vtime_rounded = round_dt(vtime)
-        if abs(vtime - vtime_rounded) < timedelta(microseconds=100000):
-            return vtime_rounded
-        return vtime
-
-    def actual_time(self, stime: datetime) -> datetime:
-        """Return the actual time from the virtual time"""
-        virtual_duration = (stime - self._start).total_seconds()
-        actual_duration = virtual_duration / self._speed
-        return self._start + self._delta + timedelta(seconds=actual_duration)
-
-
-class IUTester:
-    """Irrigation Unlimited testing class"""
-
-    # pylint: disable=too-many-instance-attributes, too-many-public-methods
-
-    def __init__(self, coordinator: "IUCoordinator") -> None:
-        # Passed parameters
-        self._coordinator = coordinator
-        # Private variables
-        self._tests: list[IUTest] = []
-        self._test_initialised = False
-        self._running_test: int = None
-        self._last_test: int = None
-        self._autoplay_initialised: bool = False
-        self._ticker: datetime = None
-        self._tests_completed: set[int] = set()
-        self.load(None)
-
-    @property
-    def enabled(self) -> bool:
-        """Return the enabled property"""
-        return self._enabled
-
-    @property
-    def speed(self) -> float:
-        """Return the test speed"""
-        return self._speed
-
-    @property
-    def is_testing(self) -> bool:
-        """Indicate if this test is running"""
-        return self._is_testing()
-
-    @property
-    def tests(self) -> "list[IUTest]":
-        """Return the list of tests to perform"""
-        return self._tests
-
-    @property
-    def current_test(self) -> IUTest:
-        """Returns the current test"""
-        if self._running_test is not None and self._running_test < len(self._tests):
-            return self._tests[self._running_test]
-        return None
-
-    @property
-    def last_test(self) -> IUTest:
-        """Returns the last test that was run"""
-        if self._last_test is not None and self._last_test < len(self._tests):
-            return self._tests[self._last_test]
-        return None
-
-    @property
-    def total_events(self) -> int:
-        """Returns the total number of events received"""
-        result: int = 0
-        for test in self._tests:
-            result += test.events
-        return result
-
-    @property
-    def total_checks(self) -> int:
-        """Returns the total number of checks performed"""
-        result: int = 0
-        for test in self._tests:
-            result += test.checks
-        return result
-
-    @property
-    def total_errors(self) -> int:
-        """Returns the number of errors detected"""
-        result: int = 0
-        for test in self._tests:
-            result += test.errors
-        return result
-
-    @property
-    def total_time(self) -> float:
-        """Returns the total amount of time to run tests"""
-        result: float = 0
-        for test in self._tests:
-            result += test.test_time
-        return result
-
-    @property
-    def total_tests(self) -> int:
-        """Returns the number of tests to run"""
-        return len(self._tests)
-
-    @property
-    def total_virtual_duration(self) -> timedelta:
-        """Returns the real time duration of the tests"""
-        result = timedelta(0)
-        for test in self._tests:
-            result += test.virtual_duration
-        return result
-
-    @property
-    def total_results(self) -> int:
-        """Returns the total number of results expected"""
-        result: int = 0
-        for test in self._tests:
-            result += test.total_results
-        return result
-
-    @property
-    def tests_completed(self) -> int:
-        """Return the number of tests completed"""
-        return len(self._tests_completed)
-
-    @property
-    def ticker(self) -> datetime:
-        """Return the tester clock"""
-        return self._ticker
-
-    @ticker.setter
-    def ticker(self, value: datetime) -> None:
-        """Set the tester clock"""
-        self._ticker = value
-
-    def virtual_time(self, atime: datetime) -> datetime:
-        """Convert actual time to virtual time"""
-        if self.is_testing:
-            return self.current_test.virtual_time(atime)
-        return atime
-
-    def actual_time(self, stime: datetime) -> datetime:
-        """Convert virtual time to actual time"""
-        if self.is_testing:
-            return self.current_test.actual_time(stime)
-        return stime
-
-    def start_test(self, test_no: int, atime: datetime) -> IUTest:
-        """Start the test"""
-        self._ticker = atime
-        if 0 < test_no <= len(self._tests):
-            self._running_test = test_no - 1  # 0-based
-            test = self._tests[self._running_test]
-            test.begin_test(atime)
-            if self._show_log:
-                self._coordinator.logger.log_test_start(
-                    test.virtual_time(atime), test, INFO
-                )
-            else:
-                self._coordinator.logger.log_test_start(test.virtual_time(atime), test)
-            self._test_initialised = False
-        else:
-            self._running_test = None
-        return self.current_test
-
-    def end_test(self, atime: datetime) -> None:
-        """Finish the test"""
-        test = self.current_test
-        if test is not None:
-            test.end_test()
-            if self._show_log:
-                self._coordinator.logger.log_test_end(
-                    test.virtual_time(atime), test, INFO
-                )
-            else:
-                self._coordinator.logger.log_test_end(test.virtual_time(atime), test)
-            self._tests_completed.add(self._running_test)
-        self._last_test = self._running_test
-        self._running_test = None
-
-    def next_test(self, atime: datetime) -> IUTest:
-        """Run the next test"""
-        current = self._running_test  # This is 0-based
-        self.end_test(atime)
-        return self.start_test(current + 2, atime)  # This takes 1-based
-
-    def _is_testing(self) -> bool:
-        return self._enabled and self._running_test is not None
-
-    def clear(self) -> None:
-        """Reset the tester"""
-        # Private variables
-        self._tests.clear()
-        self._test_initialised = False
-        self._running_test = None
-        self._last_test = None
-        self._autoplay_initialised = False
-        self._ticker: datetime = None
-        self._tests_completed.clear()
-
-    def load(self, config: OrderedDict) -> "IUTester":
-        """Load config data for the tester"""
-        # Config parameters
-        self.clear()
-        if config is None:
-            config = {}
-        self._enabled: bool = config.get(CONF_ENABLED, False)
-        self._speed: float = config.get(CONF_SPEED, DEFAULT_TEST_SPEED)
-        self._output_events: bool = config.get(CONF_OUTPUT_EVENTS, False)
-        self._show_log: bool = config.get(CONF_SHOW_LOG, True)
-        self._autoplay: bool = config.get(CONF_AUTOPLAY, True)
-        if CONF_TIMES in config:
-            for tidx, test in enumerate(config[CONF_TIMES]):
-                self._tests.append(IUTest(tidx, self._speed).load(test))
-        return self
-
-    def poll_test(self, atime: datetime, poll_func) -> None:
-        """Polling is diverted here when testing is enabled. atime is the actual time
-        but is converted to a virtual time for testing. The main polling function
-        is then called with the modified time"""
-        if self._autoplay and not self._autoplay_initialised:
-            self.start_test(1, atime)
-            self._autoplay_initialised = True
-
-        test = self.current_test
-        if test is not None:
-            if not self._test_initialised:
-                poll_func(test.start, True)
-                self._test_initialised = True
-            elif test.is_finished(atime):  # End of current test
-                if self._autoplay:
-                    test = self.next_test(atime)
-                    if test is not None:
-                        poll_func(test.start, True)
-                        self._test_initialised = True
-                    else:  # All tests finished
-                        if self._show_log:
-                            self._coordinator.logger.log_test_completed(
-                                self.total_checks, self.total_errors, INFO
-                            )
-                        else:
-                            self._coordinator.logger.log_test_completed(
-                                self.total_checks, self.total_errors
-                            )
-                        poll_func(atime, True)
-                else:  # End single test
-                    self.end_test(atime)
-                    # poll_func(atime, True)
-            else:  # Continue existing test
-                poll_func(test.virtual_time(atime))
-        else:  # Out of tests to run
-            poll_func(atime)
-
-    def entity_state_changed(self, event: IUEvent) -> None:
-        """Called when an entity has changed state"""
-
-        def check_state(event: IUEvent):
-            """Check the event against the next result"""
-            test = self.current_test
-            if test is not None:
-                result = test.next_result()
-                if not test.check_result(result, event):
-                    if not self._output_events:
-                        if self._show_log:
-                            self._coordinator.logger.log_test_error(
-                                test, event, result, ERROR
-                            )
-                        else:
-                            self._coordinator.logger.log_test_error(test, event, result)
-
-        if not self._output_events:
-            if self._show_log:
-                self._coordinator.logger.log_event(event, INFO)
-            else:
-                self._coordinator.logger.log_event(event)
-        else:
-            print(str(event))
-        check_state(event)
-
-
 class IULogger:
     """Irrigation Unlimited logger class"""
 
@@ -3884,38 +3423,6 @@ class IULogger:
             f"controller: {idl[0]}, "
             f"zone: {idl[1]}, "
             f"entity: {entity.entity_id}",
-        )
-
-    def log_test_start(self, vtime: datetime, test: IUTest, level=DEBUG) -> None:
-        """Message that a test is starting"""
-        self._output(
-            level,
-            f"TEST_START [{dt2lstr(vtime)}] "
-            f"test: {test.index + 1:d}, "
-            f"start: {dt2lstr(test.start)}, "
-            f"end: {dt2lstr(test.end)}",
-        )
-
-    def log_test_end(self, vtime: datetime, test: IUTest, level=DEBUG) -> None:
-        """Message that a test has finished"""
-        self._output(level, f"TEST_END [{dt2lstr(vtime)}] test: {test.index + 1:d}")
-
-    def log_test_error(
-        self, test: IUTest, actual: IUEvent, expected: IUEvent, level=DEBUG
-    ) -> None:
-        """Message that an event did not meet expected result"""
-        self._output(
-            level,
-            f"TEST_ERROR test: {test.index + 1:d}, "
-            f"actual: {str(actual)}, "
-            f"expected: {str(expected)}",
-        )
-
-    def log_test_completed(self, checks: int, errors: int, level=DEBUG) -> None:
-        """Message that all tests have been completed"""
-        self._output(
-            level,
-            f"TEST_COMPLETED (Idle): checks: {checks:d}, errors: {errors:d}",
         )
 
     def log_sequence_entity(self, vtime: datetime, level=WARNING) -> None:
@@ -4057,13 +3564,7 @@ class IUClock:
         self._remove_timer_listener: CALLBACK_TYPE = None
         self._tick_log = deque["datetime"](maxlen=DEFAULT_MAX_LOG_ENTRIES)
         self._next_tick: datetime = None
-        self._fixed_clock = False
         self._show_log = False
-
-    @property
-    def is_fixed(self) -> bool:
-        """Return if the clock is fixed or variable"""
-        return self._fixed_clock
 
     @property
     def next_tick(self) -> datetime:
@@ -4081,12 +3582,6 @@ class IUClock:
         """Indicate if we should show the tick log"""
         return self._show_log
 
-    def track_interval(self) -> timedelta:
-        """Returns the system clock time interval"""
-        track_time = SYSTEM_GRANULARITY / self._coordinator.tester.speed
-        track_time *= 0.95  # Run clock slightly ahead of required to avoid skipping
-        return min(timedelta(seconds=track_time), self._coordinator.refresh_interval)
-
     def start(self) -> None:
         """Start the system clock"""
         self.stop()
@@ -4102,30 +3597,16 @@ class IUClock:
         """Return the time for the next event"""
         if not self._coordinator.initialised:
             return atime + timedelta(seconds=5)
-        if self._fixed_clock:
-            return atime + self.track_interval()
 
-        # Handle testing
-        if self._coordinator.tester.is_testing:
-            stime = self._coordinator.tester.virtual_time(atime)
-            next_stime = self._coordinator.next_awakening(stime)
-            next_stime = min(next_stime, self._coordinator.tester.current_test.end)
-            result = self._coordinator.tester.actual_time(next_stime)
-        else:
-            result = self._coordinator.next_awakening(atime)
+        result = self._coordinator.next_awakening(atime)
 
         # Midnight rollover
-        if result == utc_eot() or (
-            dt.as_local(self._coordinator.tester.virtual_time(atime)).toordinal()
-            != dt.as_local(self._coordinator.tester.virtual_time(result)).toordinal()
-        ):
-            local_tomorrow = dt.as_local(
-                self._coordinator.tester.virtual_time(atime)
-            ) + timedelta(days=1)
+        if result == utc_eot():
+            local_tomorrow = dt.as_local(atime) + timedelta(days=1)
             local_midnight = local_tomorrow.replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
-            result = dt.as_utc(self._coordinator.tester.actual_time(local_midnight))
+            result = dt.as_utc(local_midnight)
 
         # Sanity check
         if result < atime:
@@ -4144,7 +3625,7 @@ class IUClock:
 
     def _add_to_log(self, atime: datetime) -> bool:
         """Add a time to the head of tick log"""
-        if not self._fixed_clock and atime is not None:
+        if atime is not None:
             self._tick_log.appendleft(atime)
             if self._show_log:
                 self._coordinator.request_update(False)
@@ -4178,23 +3659,9 @@ class IUClock:
         if self._show_log:
             self._coordinator.update_sensor(atime, False)
 
-    def test_ticker_update(self, atime: datetime) -> bool:
-        """Interface for testing unit when starting tick"""
-        if self._update_next_tick(atime) and self._show_log:
-            self._coordinator.update_sensor(atime, False)
-            return True
-        return False
-
-    def test_ticker_fired(self, atime: datetime) -> bool:
-        """Interface for testing unit when finishing tick"""
-        if self._add_to_log(atime) and self._show_log:
-            self._coordinator.update_sensor(atime, False)
-            return True
-        return False
-
     def rearm(self, atime: datetime) -> None:
         """Rearm the timer"""
-        if not self._fixed_clock and self._remove_timer():
+        if self._remove_timer():
             self._schedule_next_poll(atime)
             if self._show_log:
                 self._coordinator.update_sensor(atime, False)
@@ -4203,16 +3670,14 @@ class IUClock:
         """Load config data"""
         if config is not None and CONF_CLOCK in config:
             clock_conf: dict = config[CONF_CLOCK]
-            self._fixed_clock = clock_conf[CONF_MODE] == CONF_FIXED
             self._show_log = clock_conf[CONF_SHOW_LOG]
             if (
                 max_entries := clock_conf.get(CONF_MAX_LOG_ENTRIES)
             ) is not None and max_entries != self._tick_log.maxlen:
                 self._tick_log = deque["datetime"](maxlen=max_entries)
 
-        if not self._fixed_clock:
-            global SYSTEM_GRANULARITY  # pylint: disable=global-statement
-            SYSTEM_GRANULARITY = 1
+        global SYSTEM_GRANULARITY  # pylint: disable=global-statement
+        SYSTEM_GRANULARITY = 1
 
         return self
 
@@ -4240,7 +3705,6 @@ class IUCoordinator:
         self._muster_required: bool = False
         self._remove_shutdown_listener: CALLBACK_TYPE = None
         self._logger = IULogger(_LOGGER)
-        self._tester = IUTester(self)
         self._clock = IUClock(self._hass, self, self._async_timer)
         self._history = IUHistory(self._hass, self.service_history)
         self._restored_from_configuration: bool = False
@@ -4261,11 +3725,6 @@ class IUCoordinator:
     def clock(self) -> IUClock:
         """Return the clock object"""
         return self._clock
-
-    @property
-    def tester(self) -> IUTester:
-        """Return the tester object"""
-        return self._tester
 
     @property
     def logger(self) -> IULogger:
@@ -4372,7 +3831,6 @@ class IUCoordinator:
         while cidx < len(self._controllers) - 1:
             self._controllers.pop().finalise(True)
 
-        self._tester.load(config.get(CONF_TESTING))
         self._logger.load(config.get(CONF_LOGGING))
 
         self._dirty = True
@@ -4463,26 +3921,18 @@ class IUCoordinator:
             self._last_muster = wtime
         self.update_sensor(vtime)
 
-    def poll_main(self, atime: datetime, force: bool = False) -> None:
-        """Post initialisation worker. Divert to testing unit if
-        enabled. atime (actual time) is the real world clock"""
-        if self._tester.enabled:
-            self._tester.poll_test(atime, self.poll)
-        else:
-            self.poll(atime, force)
-
     def timer(self, atime: datetime) -> None:
         """System clock entry point"""
         self._last_tick = atime
         if self._initialised:
-            self.poll_main(atime)
+            self.poll(atime)
         else:
             self._initialised = self.is_setup
             if self._initialised:
                 self._logger.log_initialised()
                 self.check_switches(self._sync_switches, atime)
                 self.request_update(True)
-                self.poll_main(atime)
+                self.poll(atime)
 
     async def _async_timer(self, atime: datetime) -> None:
         """Timer callback"""
@@ -4515,9 +3965,7 @@ class IUCoordinator:
         # pylint: disable=unused-argument
         self.request_update(False)
         self._muster_required = True
-        if self._tester.is_testing:
-            tick = self._tester.ticker
-        elif self._last_tick is not None:
+        if self._last_tick is not None:
             tick = self._last_tick
         else:
             return
@@ -4590,14 +4038,7 @@ class IUCoordinator:
 
     def service_time(self) -> datetime:
         """Return a time midway between last and next future tick"""
-        if self._tester.is_testing:
-            result = self._tester.ticker
-            result = self._tester.virtual_time(result)
-        elif self._clock.is_fixed and self._last_tick is not None:
-            result = self._last_tick + self._clock.track_interval() / 2
-        else:
-            result = dt.utcnow()
-        return wash_dt(result)
+        return wash_dt(dt.utcnow())
 
     def service_call(
         self,
@@ -4647,28 +4088,11 @@ class IUCoordinator:
                     zone.request_update()
         self.update_sensor(self.service_time())
 
-    def start_test(self, test_no: int) -> datetime:
-        """Main entry to start a test"""
-        self._last_tick = None
-        next_time = dt.utcnow()
-        if self._tester.start_test(test_no, next_time) is not None:
-            self.timer(next_time)
-            return next_time
-        return None
-
     def status_changed(
         self, stime: datetime, controller: IUController, zone: IUZone, state: bool
     ) -> None:
         """Collection point for entities that have changed state"""
         if stime is None:
             stime = self.service_time()
-        crumbs: str = ""
-        if zone is not None:
-            zone_id = zone.index + 1
-            if state is True:
-                crumbs = zone.runs.current_run.crumbs
-        else:
-            zone_id = 0
-        event = IUEvent().load2(stime, controller.index + 1, zone_id, state, crumbs)
-        self._tester.entity_state_changed(event)
+
         self.request_update(False)

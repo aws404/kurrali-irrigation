@@ -33,7 +33,6 @@ from .const import (
     ATTR_ZONE_COUNT,
     ATTR_CURRENT_ZONE,
     ATTR_TOTAL_TODAY,
-    ATTR_SCHEDULE_COUNT,
     ATTR_ADJUSTMENT,
     ATTR_CONFIGURATION,
     ATTR_TIMELINE,
@@ -208,7 +207,6 @@ class IUZoneEntity(IUEntity):
         attr[ATTR_INDEX] = self._zone.index
         attr[ATTR_ENABLED] = self._zone.enabled
         attr[ATTR_STATUS] = self._zone.status
-        attr[ATTR_SCHEDULE_COUNT] = len(self._zone.schedules)
         attr[CONF_SCHEDULES] = ""
         attr[ATTR_ADJUSTMENT] = str(self._zone.adjustment)
         current = self._zone.runs.current_run
