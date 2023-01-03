@@ -5,4 +5,4 @@ venv
 .coverage
 Thumbs.db
 **/custom_components
-!/custom_components/irrigation_unlimited
+!/custom_components/kurrali_irrigation
