@@ -27,7 +27,7 @@ class StartTrigger:
             KEY_TIME: self.time_config
         }
 
-    def get_run_for_date(self, hass: HomeAssistant, date: dt.date):
+    def get_run_for_date(self, hass: HomeAssistant, date: dt.date, template_vars: dict):
         """Get the run time (or None) for the specified day"""
         if "frequency" in self.day_config:
             frequency = self.day_config["frequency"]
@@ -38,7 +38,7 @@ class StartTrigger:
 
         if "template" in self.time_config:
             time_template = template.Template(self.time_config["template"], hass)
-            next_time = cv.time(time_template.async_render())
+            next_time = cv.time(time_template.async_render(template_vars))
 
             #event.async_track_template_result()
 
@@ -83,13 +83,17 @@ class RunSchedule:
             KEY_TRIGGERS: self.trigger.as_dict(),
         }
 
-    def get_run_for_date(self, hass: HomeAssistant, date: dt.date):
+    def get_run_for_date(self, hass: HomeAssistant, date: dt.date, template_vars: dict):
         """Get the run time or None for the specified day"""
-        return self.trigger.get_run_for_date(hass, date)
+        return self.trigger.get_run_for_date(hass, date, template_vars)
 
     def get_zones_for_date(self, hass: HomeAssistant, date: dt.date):
         """Get the run time or None for the specified day"""
-        start_time = self.get_run_for_date(hass, date)
+        template_vars = {
+            'duration': self.get_total_duration()
+        }
+
+        start_time = self.get_run_for_date(hass, date, template_vars)
         if start_time is None:
             return None
 
