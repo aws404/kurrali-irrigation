@@ -3,6 +3,7 @@ and caching history data"""
 from datetime import datetime, timedelta
 from typing import Callable, OrderedDict, Any
 from homeassistant.core import HomeAssistant, State, CALLBACK_TYPE
+from homeassistant.const import Platform
 from homeassistant.util import dt
 from homeassistant.components.recorder.const import DATA_INSTANCE as RECORDER_INSTANCE
 from homeassistant.components.recorder import get_instance
@@ -26,7 +27,6 @@ from .const import (
     TIMELINE_START,
     TIMELINE_END,
     DOMAIN,
-    BINARY_SENSOR,
 )
 
 TIMELINE = "timeline"
@@ -113,7 +113,7 @@ class IUHistory:
         self._clear_cache()
         self._entity_ids.clear()
         for entity_id in self._hass.states.async_entity_ids():
-            if entity_id.startswith(f"{BINARY_SENSOR}.{DOMAIN}_"):
+            if entity_id.startswith(f"{Platform.BINARY_SENSOR}.{DOMAIN}_"):
                 self._entity_ids.append(entity_id)
         self._initialised = True
 

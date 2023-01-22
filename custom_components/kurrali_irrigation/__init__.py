@@ -5,7 +5,6 @@ For more details about this integration, please refer to
 https://github.com/rgc99/irrigation_unlimited
 """
 import logging
-import asyncio
 import voluptuous as vol
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.core import Config, HomeAssistant
@@ -23,16 +22,18 @@ from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-import pyrainbird.async_client
-from pyrainbird.encryption import PayloadCoder
+import pyrainbird
+from pyrainbird import async_client
+from .dummy_rainbird import DummyController
 
 from .irrigation_unlimited import IUCoordinator
-from .entity import IUComponent
-from .service import register_component_services
+#from .service import register_component_services
+from .coordinator import RainbirdUpdateCoordinator
 
 from .const import (
     RAINBIRD,
-    BINARY_SENSOR,
+    RAINBIRD_CONTROLLER,
+    PLATFORMS,
     CONF_RAINBIRD_IP,
     CONF_RAINBIRD_PASSWORD,
     CONF_ALLOW_MANUAL,
@@ -89,8 +90,6 @@ from .const import (
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
-
-_LOGGER.error(PayloadCoder)
 
 def _list_is_not_empty(value):
     if value is None or len(value) < 1:
@@ -260,39 +259,20 @@ IRRIGATION_SCHEMA = vol.Schema(
     }
 )
 
-CONFIG_SCHEMA = vol.Schema({DOMAIN: IRRIGATION_SCHEMA}, extra=vol.ALLOW_EXTRA)
+# CONFIG_SCHEMA = vol.Schema({DOMAIN: IRRIGATION_SCHEMA}, extra=vol.ALLOW_EXTRA)
+
+CONFIG_SCHEMA = vol.Schema({}, extra=vol.ALLOW_EXTRA)
 
 async def async_setup(hass: HomeAssistant, config: Config):
     """Set up this integration using YAML."""
-
-    _LOGGER.info(STARTUP_MESSAGE)
-
-    hass.data[DOMAIN] = {}
-    coordinator = IUCoordinator(hass).load(config[DOMAIN])
-    hass.data[DOMAIN][COORDINATOR] = coordinator
-
-    component = EntityComponent(_LOGGER, DOMAIN, hass)
-    hass.data[DOMAIN][COMPONENT] = component
-
-    await component.async_add_entities([IUComponent(coordinator)])
-
-    await hass.async_create_task(
-        async_load_platform(hass, BINARY_SENSOR, DOMAIN, {}, config)
-    )
-
-    register_component_services(component, coordinator)
-
-    coordinator.listen()
-    coordinator.clock.start()
-
     return True
 
 async def async_setup_controller(hass, server, password):
     """Set up a controller."""
-    client = pyrainbird.async_client.AsyncRainbirdClient(
-        async_get_clientsession(hass), server, password
-    )
-    controller = pyrainbird.async_client.AsyncRainbirdController(client)
+    if server == "localtest":
+        controller = DummyController()
+    else:
+        controller = async_client.CreateController(async_get_clientsession(hass), server, password)
     return controller
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -301,19 +281,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         hass.data.setdefault(DOMAIN, {})
         _LOGGER.info(STARTUP_MESSAGE)
 
+    hass.data[DOMAIN] = {}
+
     rainbird_ip = entry.data.get(CONF_RAINBIRD_IP)
     rainbird_password = entry.data.get(CONF_RAINBIRD_PASSWORD)
 
     rainbird_controller = await async_setup_controller(hass, rainbird_ip, rainbird_password)
+    rainbird_coordinator = RainbirdUpdateCoordinator(hass, rainbird_controller)
 
-    hass.data[DOMAIN] = {}
-    hass.data[DOMAIN][RAINBIRD] = rainbird_controller
+    hass.data[DOMAIN][RAINBIRD] = rainbird_coordinator
+    hass.data[DOMAIN][RAINBIRD_CONTROLLER] = rainbird_controller
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    await rainbird_coordinator.reload_schedule(entry)
 
     # coordinator = IUCoordinator(hass).load(config[DOMAIN])
     #hass.data[DOMAIN][COORDINATOR] = coordinator
 
-    component = EntityComponent(_LOGGER, DOMAIN, hass)
-    hass.data[DOMAIN][COMPONENT] = component
+    #component = EntityComponent(_LOGGER, DOMAIN, hass)
+    #hass.data[DOMAIN][COMPONENT] = component
 
     #await component.async_add_entities([IUComponent(coordinator)])
 
@@ -321,9 +308,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     #    async_load_platform(hass, BINARY_SENSOR, DOMAIN, {}, config)
     #)
 
-    #register_component_services(component, coordinator)
+    for platform in PLATFORMS:
+        if entry.options.get(platform, True):
+            hass.async_add_job(
+                hass.config_entries.async_forward_entry_setup(entry, platform)
+            )
 
     #coordinator.listen()
     #coordinator.clock.start()
-   # entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    return True
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Reload the plugin"""
+    _LOGGER.error("RELOADING")
+    rainbird: RainbirdUpdateCoordinator = hass.data[DOMAIN][RAINBIRD]
+    await rainbird.reload_schedule(entry)

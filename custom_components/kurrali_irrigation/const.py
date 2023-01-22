@@ -1,4 +1,7 @@
 """Constants for irrigation_unlimited."""
+
+from homeassistant.const import Platform
+
 # Base component constants
 NAME = "Kurralu Irrigation"
 DOMAIN = "kurrali_irrigation"
@@ -6,6 +9,7 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 COORDINATOR = "coordinator"
 COMPONENT = "component"
 RAINBIRD = "rainbird"
+RAINBIRD_CONTROLLER = "rainbird_controller"
 VERSION = "2022.12.0"
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 ISSUE_URL = "https://github.com/rgc99/irrigation_unlimited/issues"
@@ -26,12 +30,16 @@ ICON_SEQUENCE_ZONE_ON = "mdi:play-circle-outline"
 ICON_SEQUENCE_ZONE_OFF = "mdi:stop-circle-outline"
 
 # Platforms
-BINARY_SENSOR = "binary_sensor"
-PLATFORMS = [BINARY_SENSOR]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.CALENDAR]
+
+# Services
+SERVICE_MANUAL_IRRIGATION = "manual_irrigation"
 
 # Rainbird Configuration
 CONF_RAINBIRD_IP = "rainbird_ip"
 CONF_RAINBIRD_PASSWORD = "rainbird_password"
+SCHEDULES = "schedules"
+STATIONS = "stations"
 
 # Configuration and options
 CONF_ENABLED = "enabled"

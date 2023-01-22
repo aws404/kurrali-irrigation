@@ -20,6 +20,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers import sun, template
 from homeassistant.util import dt
+from homeassistant.const import Platform
 
 from homeassistant.const import (
     ATTR_ICON,
@@ -63,7 +64,6 @@ from .const import (
     ATTR_TOTAL_DURATION,
     ATTR_ZONE_IDS,
     ATTR_ZONES,
-    BINARY_SENSOR,
     CONF_ACTUAL,
     CONF_ALL_ZONES_CONFIG,
     CONF_ALLOW_MANUAL,
@@ -1310,7 +1310,7 @@ class IUZone(IUBase):
     @property
     def entity_id(self) -> str:
         """Return the HA entity_id for the zone"""
-        return f"{BINARY_SENSOR}.{DOMAIN}_{self.entity_base}"
+        return f"{Platform.BINARY_SENSOR}.{DOMAIN}_{self.entity_base}"
 
     @property
     def runs(self) -> IUScheduleQueue:
@@ -2587,7 +2587,7 @@ class IUController(IUBase):
     @property
     def entity_id(self) -> str:
         """Return the HA entity_id for the controller entity"""
-        return f"{BINARY_SENSOR}.{DOMAIN}_{self.entity_base}"
+        return f"{Platform.BINARY_SENSOR}.{DOMAIN}_{self.entity_base}"
 
     @property
     def zones(self) -> "list[IUZone]":

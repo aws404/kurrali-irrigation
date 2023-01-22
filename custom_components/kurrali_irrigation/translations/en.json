@@ -9,9 +9,27 @@
                     "rainbird_password": "LNK Password"
                 }
             },
-            "setup_zones": {
-                "title": "Zone Setup",
-                "description": "Give all zones a name."
+            "setup_stations": {
+                "title": "Stations Setup",
+                "description": "Give all stations on {model} a friendly name.",
+                "data": {
+                    "station_1": "Station 1",
+                    "station_2": "Station 2",
+                    "station_3": "Station 3",
+                    "station_4": "Station 4",
+                    "station_5": "Station 5",
+                    "station_6": "Station 6",
+                    "station_7": "Station 7",
+                    "station_8": "Station 8",
+                    "station_9": "Station 9",
+                    "station_10": "Station 10",
+                    "station_11": "Station 11",
+                    "station_12": "Station 12",
+                    "station_13": "Station 13",
+                    "station_14": "Station 14",
+                    "station_15": "Station 15",
+                    "station_16": "Station 16"
+                }
             }
         },
         "error": {
@@ -23,11 +41,50 @@
     },
     "options": {
         "step": {
-            "user": {
+            "init": {
+                "title": "Configure Schedule",
+                "description": "Select a schedule to modify, or create a new one.",
                 "data": {
-                    "binary_sensor": "Binary sensor enabled",
-                    "sensor": "Sensor enabled",
-                    "switch": "Switch enabled"
+                    "schedule_to_modify": "Schedule to Modify"
+                }
+            },
+            "modify_schedule": {
+                "title": "Modify Schedule",
+                "description": "Enter the details for the new schdedule.",
+                "data": {
+                    "name": "Schedule Name",
+                    "stations": "Stations to Run",
+                    "frequency": "Run Frequency (days)",
+                    "frequency_start": "Frequency Start Date",
+                    "time_template": "Start Time Template"
+                }
+            },
+            "modify_run_times": {
+                "title": "Modify Schedule",
+                "description": "Enter the run times for each station in {schedule_name}.",
+                "data": {
+                    "time_for_0": "Run Time",
+                    "label_for_0": "Station:",
+                    "time_for_1": "Run Time",
+                    "label_for_1": "Station:",
+                    "time_for_2": "Run Time",
+                    "label_for_2": "Station:",
+                    "time_for_3": "Run Time",
+                    "label_for_3": "Station:",
+                    "time_for_4": "Run Time",
+                    "label_for_4": "Station:",
+                    "time_for_5": "Run Time",
+                    "label_for_5": "Station:",
+                    "time_for_6": "Run Time",
+                    "label_for_6": "Station:",
+                    "time_for_7": "Run Time",
+                    "label_for_7": "Station:",
+                    "time_for_8": "Run Time",
+                    "label_for_8": "Station:",
+                    "time_for_9": "Run Time",
+                    "label_for_9": "Station:",
+                    "time_for_10": "Run Time",
+                    "label_for_10": "Station:"
                 }
             }
         }
